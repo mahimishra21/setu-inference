@@ -1,17 +1,19 @@
 # SETU sign-recognition inference service.
 #
-# Built for Hugging Face Spaces' Docker SDK (see README.md's YAML header --
-# app_port must match the port this container listens on). Nothing here is
-# HF-specific beyond that port and the working directory; it also runs fine
-# with a plain `docker run -p 8000:8000 ...` for local testing.
+# Deployed on Render (see README.md's "Deploying" section) -- Hugging Face
+# Spaces' Docker SDK needs a paid plan as of this writing, and this has no
+# other host-specific assumptions (PORT is read from the environment, falling
+# back to 7860 for local `docker run`), so it isn't tied to Render either.
 
 FROM python:3.12-slim
 
 # libgl1/libglib2.0-0: mediapipe's compiled graph runtime dlopen's these even
-# though opencv-python-headless itself doesn't need an X server.
+# though opencv-python-headless itself doesn't need an X server. curl: fetches
+# the checkpoint below.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -25,16 +27,22 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
 COPY app.py .
 COPY vendor/ vendor/
 
-# The checkpoint (vendor/INCLUDE/checkpoints/*.pth, ~205MB) is gitignored in
-# the main SETU repo and is NOT fetched here -- see README.md's "Deploying"
-# section for why (no stable, verified re-download URL) and how to get it
-# into this image (push it via git-lfs, or drag it into the Space's Files
-# tab). The service raises a clear startup error if it's missing rather than
-# silently serving a model that was never loaded.
+# The checkpoint (~205MB) is gitignored, not git-lfs -- LFS support turned
+# out to vary by host (a build that clones without running the LFS smudge
+# silently leaves a ~134-byte pointer file in its place, which then fails
+# torch.load() at startup with no obvious cause). A plain HTTPS download from
+# a GitHub Release asset works identically everywhere. The byte-count check
+# turns "silently wrong file" into "build fails loudly," which is exactly the
+# failure mode that cost real time to diagnose the first time.
+RUN mkdir -p vendor/INCLUDE/checkpoints \
+    && curl -fL -o vendor/INCLUDE/checkpoints/include_no_cnn_transformer_large.pth \
+       https://github.com/mahimishra21/setu-inference/releases/download/checkpoint-v1/include_no_cnn_transformer_large.pth \
+    && actual_size=$(stat -c%s vendor/INCLUDE/checkpoints/include_no_cnn_transformer_large.pth) \
+    && [ "$actual_size" = "205805173" ] || (echo "checkpoint size mismatch: got $actual_size bytes" && exit 1)
 
 ENV PYTHONUNBUFFERED=1
-# HF Spaces' Docker SDK routes traffic to this port; see the app_port in
-# README.md's YAML header. Override PORT for a non-Spaces deployment.
+# Render sets PORT itself at runtime, overriding this default -- CMD below
+# reads it dynamically either way.
 ENV PORT=7860
 EXPOSE 7860
 

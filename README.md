@@ -63,64 +63,54 @@ free-tier host's shared CPU.
 ## The checkpoint
 
 `vendor/INCLUDE/checkpoints/include_no_cnn_transformer_large.pth` (205,805,173
-bytes) is gitignored in the main SETU repo — a 200MB binary doesn't belong in
-a Next.js monorepo's git history. It is **not** re-downloaded during the
-Docker build either, because there is no verified, stable URL for it recorded
-anywhere in this repo to build that step against, and silently trusting an
-unpinned "pretrained checkpoint" URL at build time is exactly the kind of
-supply-chain risk not worth taking. Instead, get the already-verified file
-(byte count, PyTorch zip signature, and a successful load against this exact
-model architecture with zero `state_dict` mismatches were all checked when it
-was first downloaded) into wherever you deploy this by one of:
+bytes) is gitignored in both this repo and the main SETU repo — a 200MB
+binary doesn't belong in either's git history. It's published as a
+[GitHub Release asset](https://github.com/mahimishra21/setu-inference/releases/tag/checkpoint-v1)
+on this repo instead (a plain HTTPS download, works on any host), and the
+Dockerfile fetches and byte-count-verifies it during the build.
 
-- **Hugging Face Spaces**: push it with `git lfs` (see "Deploying" below), or
-  drag it directly into the Space's Files tab in the browser — both work.
-- **Any other host**: copy the file alongside `app.py` before building, or
-  mount/download it at container start using your own trusted source.
+Git LFS was tried first and dropped: LFS support turned out to vary by build
+host — a build that clones the repo without running the LFS smudge step
+silently leaves a ~134-byte pointer file in the checkpoint's place, and
+`torch.load()` then fails at startup with a confusing error that gives no
+hint the actual problem is upstream, in the clone. A GitHub Release asset
+sidesteps that entirely: it's the same URL and the same bytes regardless of
+whether the host understands LFS.
 
-## Deploying (Hugging Face Spaces, free CPU tier)
+Running locally without Docker: download that release asset yourself into
+`vendor/INCLUDE/checkpoints/include_no_cnn_transformer_large.pth` before
+starting `uvicorn` — the app raises a clear error at startup if it's missing.
 
-Requires a free huggingface.co account — that step, and logging in with your
-own token, has to happen in your own browser/terminal.
+## Deploying (Render, free tier)
 
-1. Go to <https://huggingface.co/new-space>. Pick a name, set **SDK** to
-   **Docker**, hardware **CPU basic** (free), visibility however you like.
-   This gives you a git URL:
-   `https://huggingface.co/spaces/<your-username>/<space-name>`.
-2. In a terminal, from the repo root:
+Hugging Face Spaces' Docker SDK requires a paid PRO plan as of this writing
+(only its Static SDK is free, which can't run Python) — that's why this
+targets Render instead. Render deploys straight from a GitHub repo, so there's
+no separate git-push-to-a-different-remote step.
 
-   ```bash
-   cp -r inference-service /tmp/setu-space
-   cd /tmp/setu-space
-   git init
-   git lfs install
-   git lfs track "*.pth"
-   git add -A
-   git add -f vendor/INCLUDE/checkpoints/include_no_cnn_transformer_large.pth
-   git commit -m "Deploy SETU sign recognizer"
-   git remote add space https://huggingface.co/spaces/<your-username>/<space-name>
-   git push space main
-   ```
+Requires a free render.com account — that step has to happen in your own
+browser.
 
-   (No `git lfs`? Skip the `lfs` lines, push everything else, then drag
-   `include_no_cnn_transformer_large.pth` into the Space's **Files** tab in
-   the browser afterward — same end result.)
-
-3. In the Space's **Settings → Variables and secrets**, add
-   `ALLOWED_ORIGIN` = your Vercel production URL (e.g.
-   `https://web-smoky-chi-27.vercel.app`) so the browser's CORS preflight
-   succeeds. Leaving it unset defaults to `*`, which works but is wide open.
-4. Wait for the build to finish (the **Logs** tab shows progress — expect
-   several minutes for the torch/mediapipe install). Once it says
-   `Application startup complete`, the service is live at
-   `https://<your-username>-<space-name>.hf.space`.
-5. Confirm it: `curl https://<your-username>-<space-name>.hf.space/health`
-   should return `{"status":"ok","model_loaded":true}`.
-6. Give that URL to Claude to wire into Vercel (`NEXT_PUBLIC_RECOGNIZER_URL`)
+1. Sign up at <https://render.com> (GitHub sign-in is easiest).
+2. Dashboard → **New +** → **Web Service** → connect your GitHub account if
+   asked → select the `setu-inference` repo.
+3. Render should auto-detect the `Dockerfile`. Set **Instance Type** to
+   **Free**.
+4. **Settings → Environment** → add `ALLOWED_ORIGIN` = your Vercel production
+   URL (e.g. `https://web-smoky-chi-27.vercel.app`), so the browser's CORS
+   preflight succeeds. Leaving it unset defaults to `*`, which works but is
+   wide open.
+5. Create the service and watch the **Logs** tab (the torch/mediapipe install
+   takes several minutes the first time). Once it says
+   `Application startup complete`, it's live at
+   `https://<service-name>.onrender.com`.
+6. Confirm it: `curl https://<service-name>.onrender.com/health` should
+   return `{"status":"ok","model_loaded":true}`.
+7. Give that URL to Claude to wire into Vercel (`NEXT_PUBLIC_RECOGNIZER_URL`)
    — the Vercel CLI here is already authenticated to your account, so that
    part doesn't need you to do anything further.
 
-Free CPU-basic Spaces sleep after a period of inactivity and take a beat to
-wake back up on the next request — the first citizen after a quiet spell will
-see a slower first clip. Upgrading to a persistent (paid) CPU tier removes
-that; not needed to prove the pilot works.
+Free-tier Render services spin down after 15 minutes idle and take about a
+minute to wake back up on the next request — the first citizen after a quiet
+spell will see a slow first clip. A paid instance removes that; not needed to
+prove the pilot works.
