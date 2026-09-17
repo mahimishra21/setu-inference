@@ -1,0 +1,39 @@
+# SETU sign-recognition inference service.
+#
+# Pinned to versions actually verified working against vendor/INCLUDE's
+# patched code -- not copied from the vendored repo's own (unpinned, 2021)
+# requirements.txt, which no longer resolves at all. See README.md for what
+# was broken and how each pin/patch was verified.
+#
+#   pip install -r requirements.txt
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu  (see note below)
+
+fastapi==0.141.*
+uvicorn[standard]==0.53.*
+python-multipart==0.0.*
+
+# CPU-only inference; this service never trains, and CPU is enough for one
+# clip at a time (Build Spec's "demo, not a training rig" scope). Install
+# with the CPU index above -- the default PyPI wheel pulls CUDA and is far
+# larger than a free-tier host allows.
+torch==2.14.*
+transformers==5.17.*
+timm==1.0.*
+
+# mediapipe>=0.10.20 removed the `mp.solutions` legacy API entirely (Hands,
+# Pose, Holistic) -- vendor/INCLUDE's generate_keypoints.py needs it. This is
+# the newest version confirmed to still export mp.solutions.
+mediapipe==0.10.14
+
+opencv-python-headless==5.0.*
+pandas==3.0.*
+numpy==2.5.*
+scikit-learn==1.9.*
+joblib==1.6.*
+tqdm==4.70.*
+
+# Only imported because vendor/INCLUDE/models/__init__.py unconditionally
+# imports its xgboost.py sibling even though evaluate.py (our actual entry
+# point) never uses it. Real, low-risk dependency -- simpler to satisfy the
+# import than to restructure vendored code.
+xgboost==3.4.*

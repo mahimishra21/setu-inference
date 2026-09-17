@@ -1,0 +1,10 @@
+.venv-probe/
+__pycache__/
+**/__pycache__/
+*.pyc
+**/keypoints_dir/
+test_app.py
+test_app_tmp_clip.mp4
+.pytest_cache/
+*.mp4
+*.webm

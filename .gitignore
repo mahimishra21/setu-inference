@@ -1,0 +1,8 @@
+.venv/
+.venv-probe/
+__pycache__/
+*.pyc
+vendor/INCLUDE/checkpoints/
+**/keypoints_dir/
+*.mp4
+*.webm
