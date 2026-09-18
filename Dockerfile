@@ -20,8 +20,12 @@ WORKDIR /app
 
 # Dependencies before source so a code change doesn't invalidate this layer.
 COPY requirements.txt .
+# torchvision must come from the same CPU index as torch: timm (needed by the
+# vendored INCLUDE code) imports it, and a PyPI torchvision built against a
+# different torch fails at import with "operator torchvision::nms does not
+# exist" -- exactly what Render's second deploy crashed on.
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
-    torch==2.14.* \
+    torch==2.14.* torchvision==0.29.* \
     && pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .

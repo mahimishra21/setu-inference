@@ -19,6 +19,9 @@ python-multipart==0.0.*
 torch==2.14.*
 transformers==5.17.*
 timm==1.0.*
+# timm imports torchvision. Must match torch's build (both from the CPU index
+# -- see the Dockerfile); a mismatched PyPI torchvision crashes at import.
+torchvision==0.29.*
 
 # mediapipe>=0.10.20 removed the `mp.solutions` legacy API entirely (Hands,
 # Pose, Holistic) -- vendor/INCLUDE's generate_keypoints.py needs it. This is
